@@ -7,6 +7,7 @@ class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     email: EmailStr = Field(index=True, unique=True)
     hashed_password: str
+    is_verified: bool = Field(default=False)
 
 
 # ----- Pydantic схемы -----
@@ -16,11 +17,15 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
 
+class UserLogin(UserCreate):
+    pass    
+
 
 # То, что возвращается наружу (например /me)
 class UserRead(BaseModel):
     id: int
     email: EmailStr
+    is_verified: bool
 
     class Config:
         from_attributes = True   # чтобы можно было возвращать SQLModel-объекты
