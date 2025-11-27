@@ -1,8 +1,24 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from .database import init_db
 from .routers import auth, duels
 
 app = FastAPI()
+
+# ---- CORS ----
+origins = [
+    "http://localhost:5173/geo-guess-grid/",
+    "*"  # можно временно, но не оставляй в production
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],   # Разрешить все методы: GET, POST, OPTIONS, DELETE...
+    allow_headers=["*"],   # Разрешить любые заголовки
+)
 
 # Инициализация базы и создание таблиц
 init_db()

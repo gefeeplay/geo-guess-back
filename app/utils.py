@@ -12,7 +12,7 @@ load_dotenv()
 
 # Читаем секрет из переменных окружения (в production обязательно задавать)
 SECRET_KEY = os.getenv("JWT_SECRET")
-ALGORITHM = "HS256"
+ALGORITHM = os.getenv("ALGORITHM")
 # Время жизни access token в минутах
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))  
 

@@ -1,6 +1,12 @@
+import os
+from dotenv import load_dotenv
 from sqlmodel import SQLModel, create_engine, Session
 
-DATABASE_URL = "postgresql://postgres:wzwzwz41521@localhost:5432/geoguess"
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL_TEST") if os.getenv("TESTING") == "1" else os.getenv("DATABASE_URL")
+
+print("DATABASE_URL =", repr(DATABASE_URL))
 
 engine = create_engine(DATABASE_URL, echo=True)
 
