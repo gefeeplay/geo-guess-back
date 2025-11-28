@@ -3,10 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 from sqlmodel import Session, select
+from datetime import datetime, timedelta
 
 from app.database import get_session
 from app.models import User, UserCreate, UserRead
-from app.utils import hash_password, verify_password, create_access_token, decode_token
+from app.utils import hash_password, verify_password, create_access_token, decode_token, create_verification_token, send_verification_email
+
 
 router = APIRouter()
 
@@ -45,19 +47,48 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return user
 
 # --------- endpoints ---------
-@router.post("/register", response_model=UserRead)
-def register(data: UserCreate, session: Session = Depends(get_session)):
-    """Register a new user"""
-    existing = session.exec(select(User).where(User.email == data.email)).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
+@router.post("/register")
+def register(user_data: UserCreate, session: Session = Depends(get_session)):
+    try:
+        existing = session.exec(
+            select(User).where(User.email == user_data.email)
+        ).first()
+        
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already registered")
 
-    hashed = hash_password(data.password)
-    user = User(email=data.email, hashed_password=hashed)
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    return user
+        # создаем токен подтверждения
+        token, expires = create_verification_token()
+
+        new_user = User(
+            email=user_data.email,
+            hashed_password=hash_password(user_data.password),
+            is_verified=False,
+            verification_token=token,
+            verification_expire=expires,
+        )
+
+        session.add(new_user)
+        session.commit()
+        session.refresh(new_user)
+
+        # отправляем письмо (в фоне или с обработкой ошибок)
+        try:
+            send_verification_email(new_user.email, token)
+        except Exception as email_error:
+            # Логируем ошибку, но не прерываем регистрацию
+            print(f"Email sending failed: {email_error}")
+            # Можно также сохранить эту ошибку в базу данных
+
+        return {"message": "User created, verification email sent"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()  # Важно откатить изменения при ошибке
+        print(f"Registration error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 @router.post("/login")
 def login(data: UserCreate, session: Session = Depends(get_session)):
@@ -73,3 +104,28 @@ def login(data: UserCreate, session: Session = Depends(get_session)):
 def me(current_user: User = Depends(get_current_user)):
     """Get current user info - requires JWT token"""
     return current_user
+
+@router.get("/verify")
+def verify_email(token: str, session: Session = Depends(get_session)):
+    try:
+        user = session.exec(select(User).where(User.verification_token == token)).first()
+
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid token")
+
+        if user.verification_expire < datetime.utcnow():
+            raise HTTPException(status_code=400, detail="Token expired")
+
+        user.is_verified = True
+        user.verification_token = None
+        user.verification_expire = None
+        session.add(user)
+        session.commit()
+
+        return {"message": "Email verified successfully"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")

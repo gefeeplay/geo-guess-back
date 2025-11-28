@@ -1,4 +1,5 @@
 from typing import Optional
+from datetime import datetime
 from sqlmodel import SQLModel, Field
 from pydantic import BaseModel, EmailStr
 
@@ -8,6 +9,8 @@ class User(SQLModel, table=True):
     email: EmailStr = Field(index=True, unique=True)
     hashed_password: str
     is_verified: bool = Field(default=False)
+    verification_token: Optional[str] = None
+    verification_expire: Optional[datetime] = None
 
 
 # ----- Pydantic схемы -----

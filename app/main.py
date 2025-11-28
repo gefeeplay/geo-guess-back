@@ -8,16 +8,17 @@ app = FastAPI()
 
 # ---- CORS ----
 origins = [
-    "http://localhost:5173/geo-guess-grid/",
-    "*"  # можно временно, но не оставляй в production
+    "http://localhost:5173",
+    "https://gefeeplay.github.io/geo-guess-grid/",
+    "*",  # можно временно, но не оставляй в production
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],   # Разрешить все методы: GET, POST, OPTIONS, DELETE...
-    allow_headers=["*"],   # Разрешить любые заголовки
+    allow_methods=["*"],  # Разрешить все методы: GET, POST, OPTIONS, DELETE...
+    allow_headers=["*"],  # Разрешить любые заголовки
 )
 
 # Инициализация базы и создание таблиц
