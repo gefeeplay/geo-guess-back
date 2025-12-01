@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .logger import logger
 
 from .database import init_db
-from .routers import auth, duels
+from .routers import auth, duels, statistics
 
 app = FastAPI()
 logger.info('Starting API...')
@@ -28,3 +28,4 @@ init_db()
 
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(duels.router, prefix="/duels", tags=["Duels"])
+app.include_router(statistics.router, prefix="/statistics", tags=["Statistics"])
