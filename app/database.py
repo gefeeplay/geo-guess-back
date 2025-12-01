@@ -8,7 +8,7 @@ DATABASE_URL = os.getenv("DATABASE_URL_TEST") if os.getenv("TESTING") == "1" els
 
 print("DATABASE_URL =", repr(DATABASE_URL))
 
-engine = create_engine(DATABASE_URL, echo=True)
+engine = create_engine(DATABASE_URL, echo=False)
 
 def init_db():
     from .models import User, Duel
