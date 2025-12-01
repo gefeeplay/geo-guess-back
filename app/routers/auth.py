@@ -1,63 +1,71 @@
-# app/routers/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 from sqlmodel import Session, select
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from app.database import get_session
 from app.models import User, UserCreate, UserRead
-from app.utils import hash_password, verify_password, create_access_token, decode_token, create_verification_token, send_verification_email
-
+from app.utils import (
+    hash_password, verify_password, create_access_token,
+    decode_token, create_verification_token, send_verification_email
+)
+from app.logger import logger
 
 router = APIRouter()
-
-# Используем HTTPBearer для JWT токенов
 security = HTTPBearer()
 
-# --------- helpers ----------
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), session: Session = Depends(get_session)) -> User:
-    """
-    Dependency: returns SQLModel User instance for a valid token.
-    Raises 401 if token invalid or user not found.
-    """
+
+# ---------- Helpers ----------
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    session: Session = Depends(get_session)
+) -> User:
     token = credentials.credentials
-    
+    logger.info(f"Получен токен для проверки: {token}")
+
     data = decode_token(token)
     if not data:
+        logger.warning("Неверный или просроченный токен")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
         )
+
     user_id = data.get("user_id")
     if not user_id:
+        logger.warning("Некорректный payload токена")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
-            headers={"WWW-Authenticate": "Bearer"},
         )
+
     user = session.get(User, user_id)
     if not user:
+        logger.warning(f"Пользователь с id {user_id} не найден")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
         )
+
+    logger.info(f"Авторизован пользователь: {user.email}")
     return user
 
-# --------- endpoints ---------
+
+# ---------- Endpoints ----------
 @router.post("/register")
 def register(user_data: UserCreate, session: Session = Depends(get_session)):
+    logger.info(f"Попытка регистрации пользователя: {user_data.email}")
+
     try:
         existing = session.exec(
             select(User).where(User.email == user_data.email)
         ).first()
-        
+
         if existing:
+            logger.warning(f"Регистрация отклонена — email уже используется: {user_data.email}")
             raise HTTPException(status_code=400, detail="Email already registered")
 
-        # создаем токен подтверждения
         token, expires = create_verification_token()
 
         new_user = User(
@@ -72,60 +80,81 @@ def register(user_data: UserCreate, session: Session = Depends(get_session)):
         session.commit()
         session.refresh(new_user)
 
-        # отправляем письмо (в фоне или с обработкой ошибок)
+        logger.info(f"Пользователь создан: {new_user.email}, отправка письма подтверждения")
+
         try:
             send_verification_email(new_user.email, token)
         except Exception as email_error:
-            # Логируем ошибку, но не прерываем регистрацию
-            print(f"Email sending failed: {email_error}")
-            # Можно также сохранить эту ошибку в базу данных
+            logger.error(f"Ошибка отправки письма: {email_error}")
 
         return {"message": "User created, verification email sent"}
 
     except HTTPException:
         raise
     except Exception as e:
-        session.rollback()  # Важно откатить изменения при ошибке
-        print(f"Registration error: {e}")
+        session.rollback()
+        logger.error(f"Ошибка регистрации: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/login")
 def login(data: UserCreate, session: Session = Depends(get_session)):
-    """Login endpoint - returns JWT token"""
-    user = session.exec(select(User).where(User.email == data.email)).first()
-    if not user or not verify_password(data.password, user.hashed_password):
+    logger.info(f"Попытка входа: {data.email}")
+
+    user = session.exec(
+        select(User).where(User.email == data.email)
+    ).first()
+
+    if not user:
+        logger.warning(f"Вход отклонён — пользователь не найден: {data.email}")
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not verify_password(data.password, user.hashed_password):
+        logger.warning(f"Вход отклонён — неверный пароль: {data.email}")
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = create_access_token({"user_id": user.id})
+
+    logger.info(f"Пользователь вошёл: {user.email}")
     return {"access_token": token, "token_type": "bearer"}
+
 
 @router.get("/me", response_model=UserRead)
 def me(current_user: User = Depends(get_current_user)):
-    """Get current user info - requires JWT token"""
+    logger.info(f"Запрос информации о пользователе: {current_user.email}")
     return current_user
+
 
 @router.get("/verify")
 def verify_email(token: str, session: Session = Depends(get_session)):
+    logger.info(f"Запрос подтверждения email по токену: {token}")
+
     try:
-        user = session.exec(select(User).where(User.verification_token == token)).first()
+        user = session.exec(
+            select(User).where(User.verification_token == token)
+        ).first()
 
         if not user:
+            logger.warning("Попытка подтверждения с неверным токеном")
             raise HTTPException(status_code=400, detail="Invalid token")
 
         if user.verification_expire < datetime.utcnow():
+            logger.warning("Токен подтверждения просрочен")
             raise HTTPException(status_code=400, detail="Token expired")
 
         user.is_verified = True
         user.verification_token = None
         user.verification_expire = None
+
         session.add(user)
         session.commit()
 
+        logger.info(f"Email успешно подтверждён: {user.email}")
         return {"message": "Email verified successfully"}
-    
+
     except HTTPException:
         raise
     except Exception as e:
         session.rollback()
+        logger.error(f"Ошибка подтверждения email: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

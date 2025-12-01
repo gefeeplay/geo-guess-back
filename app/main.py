@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from .logger import logger
 
 from .database import init_db
 from .routers import auth, duels
 
 app = FastAPI()
+logger.info('Starting API...')
 
 # ---- CORS ----
 origins = [
