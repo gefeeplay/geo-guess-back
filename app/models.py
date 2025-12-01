@@ -65,3 +65,23 @@ class StatisticsRead(BaseModel):
     class Config:
         orm_mode = True
 
+# Запрос
+class GameResult(BaseModel):
+    won: bool  # True - выиграл, False - проиграл
+
+class DuelResult(BaseModel):
+    won: bool  # True - выиграл, False - проиграл
+
+# Ответ
+class GameStatisticsResponse(BaseModel):
+    message: str
+    user_email: EmailStr
+    games: int
+    games_won: int
+
+class DuelStatisticsResponse(BaseModel):
+    message: str
+    user_email: EmailStr
+    duels: int
+    duels_won: int
+
